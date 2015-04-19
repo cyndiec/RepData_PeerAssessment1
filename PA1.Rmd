@@ -1,0 +1,148 @@
+---
+title: "Reproducible Research: Peer Assessment 1"
+output: 
+  html_document:
+    keep_md: true
+---
+
+
+## Loading and preprocessing the data
+
+Load the data and necessary libraries:
+
+```{r extractData}
+unzip("activity.zip")
+data <- read.csv("activity.csv")
+library(dplyr)
+library(lattice)
+```
+
+Transform date column into dates:
+
+```{r previewData}
+data$date <- as.Date(data$date , "%Y-%m-%d")
+summary(data)
+str(data)
+```
+
+## What is mean total number of steps taken per day?
+
+Aggregate sum of steps per day:
+
+```{r aggDataByDate}
+aggDataByDate <- aggregate(data[,1],by=list(data$date),sum, na.rm=TRUE)
+colnames(aggDataByDate) <- c("date","steps")
+```
+
+Plot this in a histogram:
+
+```{r histogram}
+hist(aggDataByDate$steps,main="Histogram of total number of steps taken per day",xlab="steps per day")
+```
+
+This is the mean of the total number of steps taken per day:
+
+```{r mean}
+mean(aggDataByDate$steps)
+```
+
+This is the median of the total number of steps taken per day:
+
+```{r median}
+median(aggDataByDate$steps)
+```
+
+## What is the average daily activity pattern?
+
+Aggregate steps by 5-minute interval:
+
+```{r aggDataByInterval}
+subsetOfData <- subset(data, select = c("steps","interval"))
+aggDataByInterval <- aggregate(subsetOfData,by=list(subsetOfData$interval),mean, na.rm=TRUE)
+```
+
+Plot the data:
+
+```{r timeSeriesPlot}
+plot(aggDataByInterval$interval,aggDataByInterval$steps,type="l",xlab="5-minute interval",ylab="Average number of steps taken",main="Average daily activity pattern")
+```
+
+5-minute interval which contains the maximum number of steps, when taking average across all days in the dataset is 
+
+```{r maxStepsInterval}
+aggDataByInterval <- tbl_df(aggDataByInterval)
+max <- select(filter(aggDataByInterval,steps == max(aggDataByInterval$steps)),interval)
+```
+
+## Imputing missing values
+
+Below we see how many NA's are in the steps column: 2,304
+
+```{r}
+summary(data)
+```
+
+To impute the missing values, we use the mean of that row's 5-minute interval. To do this, we merge the original data with the data frame of average aggregated steps by 5-minute interval. Then we replace the missing values in the steps column of the original data frame with the mean of the aggregated steps of the associated 5-minute interval.
+
+```{r}
+merged <- merge(data,aggDataByInterval, by=c("interval"))
+dataReplaced <- select(merged,interval,date,steps=steps.x,stepsMean=steps.y)
+dataReplaced$steps[is.na(dataReplaced$steps)] <- dataReplaced$stepsMean[is.na(dataReplaced$steps)]
+dataReplaced <- select(dataReplaced,interval,date,steps)
+```
+Here is a summary of the new dataset:
+
+```{r}
+summary(dataReplaced)
+```
+
+Generate new histogram of total number of steps taken each day:
+
+
+```{r aggDataByDateReplaced}
+subsetOfData <- subset(dataReplaced, select = c("date","steps"))
+aggDataByDateReplaced <- aggregate(subsetOfData$steps,by=list(subsetOfData$date),sum)
+colnames(aggDataByDateReplaced) <- c("date","steps")
+hist(aggDataByDateReplaced$steps,main="Histogram of total number of steps taken per day, no missing values",xlab="steps taken per day")
+```
+
+This is the mean of the total number of steps taken per day:
+
+```{r meanReplaced}
+mean(aggDataByDateReplaced$steps)
+```
+
+This is the median of the total number of steps taken per day:
+
+```{r medianReplaced}
+median(aggDataByDateReplaced$steps)
+```
+
+After imputing missing data, the mean and median are the same in the new dataset, while they differed by a little over 1000 steps in the original dataset. They are also both slightly higher than in the original dataset with the missing values. Therefore, imputing missing values led the mean and median to converge, and increased the average values.
+
+## Are there differences in activity patterns between weekdays and weekends?
+
+Add a new factor variable to specify if this is a weekday or a weekend:
+
+```{r}
+dataReplaced$date <- as.Date(dataReplaced$date , "%Y-%m-%d")
+dataReplacedDayType <- mutate(dataReplaced, weekday = weekdays(date),dayType='weekday')
+dataReplacedDayType <- mutate(dataReplacedDayType, dayType = ifelse(weekday == 'Saturday' | weekday == 'Sunday', 'weekend','weekday'))
+dataReplacedDayType <- select(dataReplacedDayType, interval,date,steps,dayType)
+dataReplacedDayType$dayType <- as.factor(dataReplacedDayType$dayType)
+str(dataReplacedDayType)
+```
+
+Aggregate steps by 5-minute interval:
+
+```{r aggDataByIntervalByType}
+subsetOfDataByType <- subset(dataReplacedDayType, select = c("steps","interval","dayType"))
+aggDataByIntervalByType <- aggregate(subsetOfDataByType$steps,by=list(subsetOfDataByType$interval,subsetOfDataByType$dayType),mean)
+colnames(aggDataByIntervalByType) <- c("interval","dayType","stepsMean")
+```
+
+Here is a panel plot containing a time series plot of the 5-minute intervals and the average number of steps taken, averaged across all weekdays or weekend days.
+
+```{r timeSeriesPlotByType}
+xyplot(stepsMean ~ interval |dayType,data=aggDataByIntervalByType,type="l",xlab="5-minute interval",ylab="Average number of steps taken",main="Average daily activity pattern by weekday/weekend",layout=c(1,2))
+```
